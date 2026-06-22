@@ -41,7 +41,7 @@ async function startScreenCapture() {
             '--disable-web-security',
             '--allow-running-insecure-content',
             '--disable-blink-features=AutomationControlled',
-            '--autoplay-policy=no-user-gesture-required' // 🟢 السماح بالتشغيل التلقائي
+            '--autoplay-policy=no-user-gesture-required'
         ]
     });
     
@@ -50,7 +50,6 @@ async function startScreenCapture() {
     // 🟢 خداع السيرفرات وإخفاء ميزة الـ webdriver تماماً لتبدو كإنسان حقيقي
     await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        // إضافة خصائص إضافية للتمويه
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
         Object.defineProperty(navigator, 'languages', { get: () => ['ar-SA', 'ar', 'en-US', 'en'] });
     });
@@ -90,7 +89,6 @@ async function startScreenCapture() {
         
         // 🟢 الخطوة المهمة: إضافة /watch/ للرابط
         let watchUrl = randomMovie.url;
-        // إزالة الشرطة المائلة في النهاية إذا وجدت
         if (watchUrl.endsWith('/')) {
             watchUrl = watchUrl.slice(0, -1);
         }
@@ -99,84 +97,116 @@ async function startScreenCapture() {
         console.log(`🚀 2. الانتقال إلى صفحة المشاهدة: ${watchUrl}`);
         await page.goto(watchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
-        // 🟢 انتظار تحميل الصفحة والمشغل
+        // 🟢 انتظار تحميل الصفحة
         console.log("⏳ انتظار تحميل صفحة المشاهدة...");
-        await new Promise(r => setTimeout(r, 5000));
+        await page.waitForTimeout(5000);
 
-        // 🟢 البحث عن iframe أو رابط المشغل المضمن
-        console.log("🔍 3. البحث عن المشغل...");
+        // 🟢 استخراج رابط التضمين من meta tag الصحيح: og:video:url
+        console.log("🔍 3. استخراج رابط المشغل من og:video:url...");
         
-        // محاولة استخراج رابط التضمين من meta tag
         const embedUrl = await page.evaluate(() => {
-            const metaTag = document.querySelector('meta[property="og:video:secure_url"]');
+            const metaTag = document.querySelector('meta[property="og:video:url"]');
+            console.log('Meta tag found:', metaTag ? metaTag.getAttribute('content') : 'null');
             return metaTag ? metaTag.getAttribute('content') : null;
         });
 
-        if (embedUrl) {
-            console.log(`✅ تم العثور على رابط التضمين: ${embedUrl}`);
-            await page.goto(embedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-            console.log("⏳ انتظار تحميل المشغل...");
-            await new Promise(r => setTimeout(r, 10000));
-        } else {
-            console.log("⚠️ لم يتم العثور على رابط تضمين، محاولة البحث عن iframe...");
-            
-            // البحث عن iframe والنقر عليه
-            const iframeElement = await page.$('iframe');
-            if (iframeElement) {
-                console.log("✅ تم العثور على iframe، جاري التبديل إليه...");
-                const frame = await iframeElement.contentFrame();
-                if (frame) {
-                    // النقر داخل الـ iframe لتشغيل الفيديو
-                    await frame.click('video, .play-button, button');
-                }
-            }
+        if (!embedUrl) {
+            throw new Error("❌ لم يتم العثور على رابط التضمين في og:video:url");
         }
 
-        // 🟢 محاكاة النقر على المشغل للتشغيل
-        console.log(`🖱️ 4. محاولة تشغيل الفيديو...`);
-        
-        // النقر في منتصف الشاشة لتشغيل الفيديو
-        await page.mouse.click(540, 960);
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // محاولة تشغيل الفيديو عبر JavaScript
-        await page.evaluate(() => {
-            const videos = document.querySelectorAll('video');
-            videos.forEach(video => {
-                video.muted = false;
-                video.play();
-            });
-            
-            // النقر على أي زر تشغيل
-            const playButtons = document.querySelectorAll('.play-button, .vjs-big-play-button, [aria-label="Play"], button.play');
-            playButtons.forEach(btn => btn.click());
+        console.log(`✅ تم العثور على رابط التضمين: ${embedUrl}`);
+
+        // 🟢 فتح الرابط في نفس التبويب
+        console.log(`🚀 4. فتح صفحة التضمين...`);
+        await page.goto(embedUrl, { 
+            waitUntil: 'networkidle2', 
+            timeout: 60000 
         });
 
-        console.log("⏳ 5. تسجيل الفيديو لمدة 60 ثانية...");
-        await new Promise(r => setTimeout(r, 60000)); // 60 ثانية كاملة
+        // انتظار تحميل المشغل
+        console.log("⏳ انتظار تحميل مشغل الفيديو...");
+        await page.waitForTimeout(8000);
+
+        // 🟢 محاولة تشغيل الفيديو
+        console.log(`🖱️ 5. محاولة تشغيل الفيديو...`);
+        
+        // محاولات متعددة لتشغيل الفيديو
+        await page.evaluate(() => {
+            // تشغيل جميع عناصر الفيديو
+            const videos = document.querySelectorAll('video');
+            videos.forEach(video => {
+                video.muted = true; // مهم للتشغيل التلقائي
+                video.play().catch(e => console.log('Video play failed:', e));
+            });
+            
+            // النقر على أزرار التشغيل المختلفة
+            const playSelectors = [
+                '.vjs-big-play-button',
+                '.play-button',
+                '[aria-label="Play"]',
+                'button.play',
+                '.jw-icon-playback',
+                '.plyr__control--overlaid',
+                'button[aria-label="تشغيل"]',
+                '.play-btn',
+                '#play-button'
+            ];
+            
+            playSelectors.forEach(selector => {
+                const elements = document.querySelectorAll(selector);
+                elements.forEach(el => el.click());
+            });
+        });
+
+        // النقر في منتصف الشاشة
+        await page.mouse.click(540, 960);
+        await page.waitForTimeout(2000);
+        
+        // النقر مرة أخرى للتأكيد
+        await page.mouse.click(540, 800);
+        await page.waitForTimeout(2000);
+
+        // محاولة أخيرة للتشغيل عبر مساحة الصفحة
+        await page.keyboard.press('Space');
+        await page.waitForTimeout(1000);
+
+        console.log("⏳ 6. تسجيل الفيديو لمدة 60 ثانية...");
+        // عداد تنازلي للتتبع
+        for (let i = 60; i > 0; i -= 10) {
+            console.log(`   ⏱️ متبقي ${i} ثانية...`);
+            await page.waitForTimeout(10000);
+        }
 
         await recorder.stop();
         await browser.close();
 
-        console.log(`🎨 6. دمج النصوص والعناوين بواسطة FFmpeg...`);
+        console.log(`🎨 7. دمج النصوص والعناوين بواسطة FFmpeg...`);
         const { execSync } = require('child_process');
         
         // تنظيف النص العربي لتجنب مشاكل FFmpeg
-        const safeTitle = randomMovie.title.replace(/'/g, "'\\''");
-        const safeFixedText = CONFIG.fixedText.replace(/'/g, "'\\''");
+        const safeTitle = randomMovie.title.replace(/'/g, "'\\''").replace(/:/g, '\\:');
+        const safeFixedText = CONFIG.fixedText.replace(/'/g, "'\\''").replace(/:/g, '\\:');
         
-        const filterCmd = `ffmpeg -i ${CONFIG.rawCapture} -vf "drawtext=fontfile=${CONFIG.fontPath}:text='${safeTitle}':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=250,drawtext=fontfile=${CONFIG.fontPath}:text='${safeFixedText}':fontcolor=yellow:fontsize=32:x=(w-text_w)/2:y=1650" -c:v libx264 -crf 23 -preset fast -y ${CONFIG.outputVideo}`;
+        // تحسين أوامر FFmpeg مع معالجة أفضل للنص العربي
+        const filterCmd = `ffmpeg -i ${CONFIG.rawCapture} \
+            -vf "drawtext=fontfile=${CONFIG.fontPath}:text='${safeTitle}':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=250:shadowx=2:shadowy=2:shadowcolor=black, \
+            drawtext=fontfile=${CONFIG.fontPath}:text='${safeFixedText}':fontcolor=yellow:fontsize=32:x=(w-text_w)/2:y=1650:shadowx=2:shadowy=2:shadowcolor=black" \
+            -c:v libx264 -crf 23 -preset fast -y ${CONFIG.outputVideo}`;
         
         execSync(filterCmd, { env: process.env, stdio: 'inherit' });
         
         // تنظيف الملف المؤقت
-        if (fs.existsSync(CONFIG.rawCapture)) fs.unlinkSync(CONFIG.rawCapture);
+        if (fs.existsSync(CONFIG.rawCapture)) {
+            fs.unlinkSync(CONFIG.rawCapture);
+            console.log("🧹 تم حذف الملف المؤقت");
+        }
 
         console.log(`🚀 تم تجهيز الفيديو بنجاح: ${CONFIG.outputVideo}`);
         return true;
 
     } catch (e) {
         console.error(`❌ خطأ:`, e.message);
+        console.error(e.stack);
         try { await recorder.stop(); } catch(err){}
         await browser.close();
         return false;
@@ -184,5 +214,6 @@ async function startScreenCapture() {
 }
 
 (async () => {
-    await startScreenCapture();
+    const result = await startScreenCapture();
+    process.exit(result ? 0 : 1);
 })();
